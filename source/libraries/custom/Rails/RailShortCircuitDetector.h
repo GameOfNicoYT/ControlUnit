@@ -9,7 +9,7 @@ public:
     void reset();
 
 private:
-    uint32_t trackCurrentLimit_mA_;
-    uint8_t requiredSamples_;
+    const uint32_t trackCurrentLimit_mA_;
+    const uint8_t requiredSamples_;
     uint8_t overLimitCount_;
 };
