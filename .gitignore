@@ -1,0 +1,43 @@
+# Build-Ausgaben (CMake, Ninja und ARM-Toolchain)
+/build/
+/out/
+/cmake-build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+**/.ninja_deps
+**/.ninja_log
+*.o
+*.obj
+*.d
+*.a
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+
+# Lokale Editor- und IDE-Daten
+.vscode/*
+!.vscode/settings.json
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+.mxproject
+
+# Betriebssystem und CubeMX-Backups
+.DS_Store
+Thumbs.db
+desktop.ini
+*.ioc.bak
+*.ioc.old
+
+# Alte Kopien im Projektstamm; aktuell ist source/libraries/core/
+/ControlUnit.ioc
+/cmake/
