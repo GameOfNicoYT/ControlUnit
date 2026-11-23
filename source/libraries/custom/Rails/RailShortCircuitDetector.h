@@ -1,11 +1,12 @@
 #pragma once
 #include <stdint.h>
+#include "stm32l0xx_hal.h"
 
 class RailShortCircuitDetector
 {
 public:
     RailShortCircuitDetector(uint32_t limit_mA, uint8_t requiredSamples);
-    bool check(uint32_t trackCurrent_mA, bool outputHigh);
+    HAL_StatusTypeDef check(uint32_t trackCurrent_mA, bool outputHigh);
     void reset();
 
 private:

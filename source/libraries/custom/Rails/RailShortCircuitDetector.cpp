@@ -7,28 +7,21 @@ RailShortCircuitDetector::RailShortCircuitDetector(
     overLimitCount_ = 0;
 };
 
-bool RailShortCircuitDetector::check(uint32_t trackCurrent_mA, bool outputHigh)
+HAL_StatusTypeDef RailShortCircuitDetector::check(uint32_t trackCurrent_mA, bool outputHigh)
 {
     if (!outputHigh)
-        return false;
+        return HAL_OK;
 
-    if (trackCurrent_mA > trackCurrentLimit_mA_)
-    {
-        if (overLimitCount_ < requiredSamples_)
-        {
-            overLimitCount_++;
-        }
-    }
-    else
+    if (trackCurrent_mA <= trackCurrentLimit_mA_)
     {
         overLimitCount_ = 0;
+        return HAL_OK;
     }
 
-    if (overLimitCount_ >= requiredSamples_)
-    {
-        return true;
-    }
-    return false;
+    if (overLimitCount_ < requiredSamples_)
+        ++overLimitCount_;
+
+    return overLimitCount_ >= requiredSamples_ ? HAL_ERROR : HAL_OK;
 }
 
 void RailShortCircuitDetector::reset()

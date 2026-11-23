@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+
+#include "stm32l0xx_hal.h"
 #include "RailPowerLowLevel.h"
 
 class CurrentSensor
@@ -13,7 +15,7 @@ public:
                   uint32_t adcReference_mV);
 
     /** @brief Kalibriert den ADC und startet die DMA-Messung. */
-    bool init();
+    HAL_StatusTypeDef init();
 
     /** @brief Uebergibt den Bahnpegel zum Zeitpunkt eines ADC-Triggers. */
     void onSampleTrigger(RailLevel level);

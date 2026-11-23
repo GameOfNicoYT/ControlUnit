@@ -1,16 +1,18 @@
 # ControlUnit – TODO
 
-Stand: 17. November 2026. Diese Liste basiert auf den heute gelesenen Projektdateien. Hardwaremessungen stehen noch aus.
+Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
 
 ## Nächster Schritt: Kurzschlussüberwachung
 
-- [ ] RailShortCircuitDetector.cpp vervollständigen: overLimitCount_ im Konstruktor initialisieren; check() soll einen definierten bool zurückgeben und nur gültige HIGH-Proben oberhalb des Grenzwerts zählen; reset() löscht den Zähler. LOW-Abschnitte sind keine Entwarnung.
-- [ ] CurrentSensors.h/.cpp vervollständigen. Die Dateien existieren und stehen bereits in der Custom-CMake-Liste; die Klasse RailCurrentSensor und die CPP-Datei sind noch leer.
+- [x] Detektor und Zähler implementieren. Nur HIGH-Proben zählen. Bei erkanntem Kurzschluss `HAL_ERROR` zurückgeben.
+- [x] Stromsensor mit ADC-Kalibrierung, DMA und Umrechnung in mA implementieren.
 - [ ] Shunt-Widerstände, INA180-Verstärkung, ADC-Referenz, Bahnstromgrenze und erlaubte Abschaltzeit am realen Schaltplan und den Anforderungen festlegen.
-- [ ] ADC-Messpfad entwerfen: PA0 ist Versorgung (ADC_IN0), PA1 die Bahn (ADC_IN1). Der Iststand: 12 Bit, Software-Trigger, 1,5 ADC-Zyklen Sampling Time, beide Kanäle konfiguriert, kein DMA. Geeignetes Timing, Trigger und Messwertübernahme festlegen.
-- [ ] Bahnprobe mit dem tatsächlichen PA8-Pegel bei der Konversion verknüpfen; bei einem Puffer nicht erst bei späterer Auswertung PA8 lesen. Abstand zu Schaltflanken vorsehen.
+- [x] ADC-Messpfad für PA0 und PA1 mit TIM2 CH4 und DMA einbinden.
+- [x] PA8 im TIM2-CH4-Interrupt lesen und den Pegel mit der Bahnprobe an die Auswertung übergeben.
+- [ ] Bei der Carrera-Signalerzeugung sicherstellen und messen, dass PA8 vom Trigger bis zur PA1-Abtastung stabil ist und genügend Abstand zur Schaltflanke besteht.
 - [ ] Ungültige, ausbleibende oder veraltete Messungen behandeln; nicht als gültige Werte unter dem Grenzwert ausgeben.
-- [ ] Stromsensor, Detector und RailPower::onShortCircuit() verbinden. Die Methode ist vorhanden; den gleichzeitigen Zugriff mit enable() und Signal-Interrupts prüfen.
+- [x] Stromsensor, Detektor und `RailPower::onShortCircuit()` über `ControlUnit::tick()` verbinden.
+- [ ] Vor der Interrupt-Anbindung der Signalausgabe den gleichzeitigen Zugriff auf `RailPower` prüfen.
 - [ ] Rücksetzung koordinieren: Detector-Zähler löschen, Fault quittieren, Ausgang zunächst OFF lassen, anschließend bewusst freigeben. resetFault() prüft den physischen Kurzschluss derzeit nicht.
 
 ## Danach
@@ -18,6 +20,6 @@ Stand: 17. November 2026. Diese Liste basiert auf den heute gelesenen Projektdat
 - [ ] Zeitkritische Carrera-Signalerzeugung ohne blockierende ADC-Abfrage im Flankenpfad implementieren.
 - [ ] Versorgungsshunt PA0 unabhängig vom Bahn-Kurzschluss überwachen.
 - [ ] Wireless-Receiver auf PA6 WIRELESS_CLK (Ausgang) / PA7 WIRELESS_DATA (Eingang) einbinden und Protokoll auswerten.
-- [ ] Anwendung in source/app/ControlUnit.cpp verdrahten: ControlUnit_Init() und ControlUnit_Tick() sind leer.
-- [ ] Aktuellen Stand bauen. Der vorher gezeigte erfolgreiche Build enthielt RailShortCircuitDetector.cpp und CurrentSensors.cpp noch nicht; CMake enthält inzwischen beide.
+- [x] Initialisierung und Auswertung in der App aufrufen.
+- [x] Debug-Firmware mit der Bahnproben-Auswertung und dem TIM2-Interrupt bauen.
 - [ ] Nach Verfügbarkeit der Hardware Stromskalierung, Timing, Grenzwerte und reale Abschaltzeit überprüfen.

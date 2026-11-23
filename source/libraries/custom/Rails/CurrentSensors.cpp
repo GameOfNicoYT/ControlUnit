@@ -19,12 +19,12 @@ CurrentSensor::CurrentSensor(uint32_t trackShunt_mOhm,
 {
 }
 
-bool CurrentSensor::init()
+HAL_StatusTypeDef CurrentSensor::init()
 {
     if ((activeSensor != nullptr && activeSensor != this) ||
         trackShunt_mOhm_ == 0 || supplyShunt_mOhm_ == 0 ||
         trackGain_ == 0 || supplyGain_ == 0 || adcReference_mV_ == 0)
-        return false;
+        return HAL_ERROR;
 
     trackSampleValid_ = false;
     supplySampleValid_ = false;
@@ -32,16 +32,16 @@ bool CurrentSensor::init()
 
     // HAL kalibriert den ADC vor dem Start der Messungen.
     if (HAL_ADCEx_Calibration_Start(&hadc, ADC_SINGLE_ENDED) != HAL_OK)
-        return false;
+        return HAL_ERROR;
 
     activeSensor = this;
     // HAL startet den ADC mit zyklischem DMA fuer zwei 16-Bit-Werte.
     if (HAL_ADC_Start_DMA(&hadc, reinterpret_cast<uint32_t *>(adcBuffer_), 2) != HAL_OK)
     {
         activeSensor = nullptr;
-        return false;
+        return HAL_ERROR;
     }
-    return true;
+    return HAL_OK;
 }
 
 void CurrentSensor::onSampleTrigger(RailLevel level)

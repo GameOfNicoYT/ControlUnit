@@ -24,17 +24,21 @@ Die Stromumrechnung braucht die tatsächlichen Shunt-Widerstände, die Verstärk
 | source/libraries/core | CubeMX, HAL, Startup, CMake und generierte Peripherie. | Vorhanden. |
 | RailPowerLowLevel | PA8 schreiben, Ausgang freigeben und bei Sperre LOW erzwingen. | Implementiert. |
 | RailPower | OFF, ON, SHORT_CIRCUIT; besitzt RailPowerLowLevel. Freigabe, Sperre, Fehlerquittierung. | Implementiert. |
-| RailCurrentSensor in CurrentSensors.h/.cpp | ADC-Rohwerte in mA umrechnen; Bahnprobe und Pegel zum Messzeitpunkt zusammenhalten. Keine Fehlerentscheidung. | Leere Klasse und leere CPP. |
-| RailShortCircuitDetector | Mehrere gültige HIGH-Stromproben auf Grenzwert prüfen. Keine GPIO-Ansteuerung. | Header vorhanden; check() und reset() leer; Zähler nicht initialisiert. |
-| source/app/ControlUnit.cpp | Klassen verbinden, Init/Ereignisse und Wireless-Nachrichten koordinieren. | ControlUnit_Init() und ControlUnit_Tick() leer. |
+| CurrentSensor in CurrentSensors.h/.cpp | ADC-Rohwerte in mA umrechnen; Bahnprobe und Pegel zum Messzeitpunkt zusammenhalten. Keine Fehlerentscheidung. | ADC- und DMA-Verarbeitung implementiert. |
+| RailShortCircuitDetector | Mehrere gültige HIGH-Stromproben auf Grenzwert prüfen. Keine GPIO-Ansteuerung. | Implementiert. `check()` meldet einen erkannten Kurzschluss als `HAL_ERROR`. |
+| source/app/ControlUnit.cpp | Klassen verbinden, Init/Ereignisse und Wireless-Nachrichten koordinieren. | Ruft die Initialisierung und Auswertung auf und leitet den TIM2-Interrupt weiter. |
 
 Das generierte main.c initialisiert GPIO, ADC, USART2 und TIM2, ruft danach ControlUnit_Init() und fortlaufend ControlUnit_Tick() auf.
+
+`source/app/ControlUnit.h` deklariert diese C-Einstiegspunkte. Die C++-Klasse `ControlUnit` steht in `source/libraries/custom/ControlUnitController.h`.
+
+`CurrentSensor::init()` und `ControlUnit::init()` liefern `HAL_StatusTypeDef`. `HAL_OK` bedeutet, dass alle Schritte der jeweiligen Initialisierung erfolgreich waren. Jeder gemeldete Start- oder Konfigurationsfehler wird als `HAL_ERROR` zurückgegeben.
 
 ## Ablauf
 
 1. Die Signalerzeugung übergibt einen gewünschten LOW/HIGH-Pegel an RailPower. RailPowerLowLevel schreibt PA8 nur HIGH, solange die Ausgabe freigegeben ist; sonst LOW.
 2. Der ADC liest TRACK_SHUNT an PA1. Jede Bahnprobe wird dem PA8-Zustand **zum Messzeitpunkt** zugeordnet, nicht dem Zustand zum späteren Zeitpunkt einer DMA- oder Callback-Auswertung. Nach der Schaltflanke muss das Messsignal ausreichend eingeschwungen sein.
-3. RailCurrentSensor rechnet den Rohwert in mA um. PA0 wird getrennt für die Versorgung überwacht.
+3. CurrentSensor rechnet den Rohwert in mA um. PA0 wird getrennt für die Versorgung überwacht.
 4. RailShortCircuitDetector bewertet gültige Bahnproben während HIGH: über Grenzwert erhöht den Zähler; eine gültige HIGH-Probe darunter setzt ihn zurück. Eine Signal-LOW-Phase ist kein gutartiger Messwert.
 5. Bei der festgelegten Anzahl Überschreitungen ruft die Anwendung RailPower::onShortCircuit() auf. Das verriegelt die Ausgabe, schreibt PA8 LOW und speichert SHORT_CIRCUIT. HIGH-Anforderungen werden anschließend blockiert.
 6. RailPower::resetFault() setzt den gespeicherten Fehler zurück auf OFF und schaltet nicht selbst ein. Wiederanlauf umfasst auch Detector-Reset und eine bewusste erneute Freigabe.
@@ -42,12 +46,12 @@ Das generierte main.c initialisiert GPIO, ADC, USART2 und TIM2, ruft danach Cont
 
 ## Timing und Schutz
 
-Der ADC ist zurzeit auf 12 Bit, beide Kanäle, Software-Trigger, 1,5 ADC-Zyklen Sampling Time und ohne DMA eingerichtet. TIM2 ist initialisiert, löst aber noch keine ADC-Konversion aus. Das ist noch keine laufende Überwachung. Für eine zeitgerechte Reaktion müssen Messzeitpunkt, Einschwingzeit, Abtastfrequenz, Kanalzuordnung und Übertragung definiert werden. Die Signalerzeugung darf nicht auf eine blockierende ADC-Abfrage warten.
+Der ADC erfasst mit 12 Bit und 39,5 ADC-Takten Abtastzeit zuerst PA0 und danach PA1. TIM2 CH4 startet die Sequenz per Hardware. Der Compare-Interrupt liest PA8 ein, der DMA-Callback speichert den Pegel mit der Bahnprobe und `ControlUnit::tick()` wertet diese aus. Der TIM2-Interrupt wird über die App eingebunden. Für eine gültige Zuordnung muss PA8 über das Ablesen und die PA1-Abtastung hinweg stabil sein. Bei der Signalerzeugung außerdem Abstand zur Schaltflanke und die Interrupt-Latenz am Board prüfen.
 
 RailPowerLowLevel::writeSignalLevel() schützt Flag-Prüfung und GPIO-Schreibvorgang mit gespeichertem PRIMASK. RailPower::enable(), disable() und resetFault() verwenden ebenfalls kurze kritische Abschnitte. onShortCircuit() verriegelt derzeit ohne eigenen kritischen Abschnitt; vor Interrupt-Anbindung Race Conditions und Reihenfolge prüfen.
 
 ## Tatsächlicher Stand
 
-RailPowerLowLevel und RailPower haben Implementierungen. RailShortCircuitDetector.cpp sowie CurrentSensors.cpp stehen zwar in source/libraries/custom/CMakeLists.txt, sind aber noch unvollständig. Der früher gezeigte erfolgreiche Build betraf einen älteren Dateistand. Ohne Hardware sind Stromskalierung, Abschaltzeit und Schutzwirkung unbestätigt.
+Die Strommessung und die Abschaltlogik sind im Code verbunden. Die Konfiguration in der App enthält noch Nullwerte, deshalb liefert die Initialisierung bis zur Eingabe der Hardwarewerte einen Fehler und die Bahn bleibt gesperrt. Abtastung, Stromskalierung und Abschaltzeit müssen am Board geprüft werden.
 
 Die nächsten Schritte stehen in [TODO.md](TODO.md).
