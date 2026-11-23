@@ -44,6 +44,16 @@ Das generierte main.c initialisiert GPIO, ADC, USART2 und TIM2, ruft danach Cont
 6. RailPower::resetFault() setzt den gespeicherten Fehler zurück auf OFF und schaltet nicht selbst ein. Wiederanlauf umfasst auch Detector-Reset und eine bewusste erneute Freigabe.
 7. Wireless-Daten steuern später die Anwendung; Protokoll und Zuordnung zur Signalerzeugung müssen noch beschrieben werden.
 
+## USART2-Empfang über den Moxa
+
+Der Moxa verbindet Ethernet mit RS232. Der STM32 empfängt die Bytes über USART2 (115200 Baud, 8N1). Das Datenformat steht in [MOXA.md](MOXA.md).
+
+1. CubeMX initialisiert `huart2`, aktiviert den USART2-Interrupt und erzeugt `USART2_IRQHandler()`. `ControlUnit_Init()` setzt die USART2-Priorität auf 1, damit TIM2 und ADC-DMA mit Priorität 0 Vorrang haben, und startet den Empfang für zwei Bytes.
+2. `USART2_IRQHandler()` ruft den HAL auf. Nach dem zweiten Byte leitet `HAL_UART_RxCpltCallback()` in `source/app/ControlUnit.cpp` das Ereignis für `huart2` an `UartTransport` weiter. Der Transport speichert das Wort mit dem höherwertigen Byte zuerst und startet den nächsten Empfang.
+3. Die spätere Befehlsauswertung ruft `tryRecieveWord()` in `ControlUnit_Tick()` auf. Prüfen, Kopieren und Zurücksetzen des Empfangsflags passieren zusammen bei kurz gesperrten Interrupts. Ein erfolgreich abgeholtes Wort wird nur einmal geliefert.
+
+Der Transport hält maximal ein vollständiges Wort zur Abholung bereit. Trifft vorher ein weiteres ein, bleibt das ältere Wort erhalten. Die SPS muss laut Protokoll die Antwort abwarten, bevor sie den nächsten Befehl sendet. Nach einem UART-Empfangsfehler oder einem fehlgeschlagenen Neustart wird der Empfang abgebrochen. Weil das 2-Byte-Format keine Startmarkierung hat, müssen beide Seiten bei einem Fehler neu synchronisiert werden. Die Firmware bietet dafür derzeit einen Neustart der ControlUnit. Befehlsauswertung und Antworten kommen beim nächsten Schritt dazu.
+
 ## Timing und Schutz
 
 Der ADC erfasst mit 12 Bit und 39,5 ADC-Takten Abtastzeit zuerst PA0 und danach PA1. TIM2 CH4 startet die Sequenz per Hardware. Der Compare-Interrupt liest PA8 ein, der DMA-Callback speichert den Pegel mit der Bahnprobe und `ControlUnit::tick()` wertet diese aus. Der TIM2-Interrupt wird über die App eingebunden. Für eine gültige Zuordnung muss PA8 über das Ablesen und die PA1-Abtastung hinweg stabil sein. Bei der Signalerzeugung außerdem Abstand zur Schaltflanke und die Interrupt-Latenz am Board prüfen.

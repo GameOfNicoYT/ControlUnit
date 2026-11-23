@@ -23,3 +23,9 @@ Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
 - [x] Initialisierung und Auswertung in der App aufrufen.
 - [x] Debug-Firmware mit der Bahnproben-Auswertung und dem TIM2-Interrupt bauen.
 - [ ] Nach Verfügbarkeit der Hardware Stromskalierung, Timing, Grenzwerte und reale Abschaltzeit überprüfen.
+
+## USART2 und MOXA-Protokoll
+
+- [x] USART2-Empfang per Interrupt starten und vollständige Wörter für die Hauptschleife bereitstellen.
+- [ ] Wörter in `ControlUnit_Tick()` auswerten und Antworten senden.
+- [ ] Empfang und Neustart der Kommunikation am Board mit dem Moxa prüfen.
