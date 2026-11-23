@@ -1,0 +1,61 @@
+name: ControlUnit CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    name: STM32 Debug build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Arm GCC and Newlib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib ninja-build
+
+      - name: Build firmware
+        run: |
+          arm-none-eabi-g++ --version
+          cmake --preset Debug -S source/libraries/core
+          cmake --build build/Debug
+          test -s build/Debug/ControlUnit.elf
+          test -s build/Debug/ControlUnit.map
+
+      - name: Upload firmware and linker map
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ControlUnit-Debug
+          path: |
+            build/Debug/ControlUnit.elf
+            build/Debug/ControlUnit.map
+          if-no-files-found: error
+
+  uart-tests:
+    name: UART host tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and run UART tests
+        run: |
+          cmake -S tests/uart -B build/uart-host -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/uart-host
+          ctest --test-dir build/uart-host --output-on-failure

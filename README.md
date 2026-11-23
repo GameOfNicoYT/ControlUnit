@@ -13,6 +13,18 @@ CubeMX über `source/libraries/core/ControlUnit.ioc` öffnen. Änderungen an gen
 
 In VS Code den Projektstamm öffnen; CMake Tools verwendet `source/libraries/core` als Quellverzeichnis. Mit `cmake --preset Debug -S source/libraries/core` und `cmake --build build/Debug` aus dem Projektstamm bauen. Arm GNU Toolchain und Ninja müssen im PATH verfügbar sein.
 
+## Automatische Builds und Tests
+
+GitHub Actions baut die Debug-Firmware bei Pushes auf `master` und bei Pull Requests gegen `master`. Im jeweiligen Lauf unter **Actions → ControlUnit CI** enthält das Artefakt **ControlUnit-Debug** die Dateien `ControlUnit.elf` und `ControlUnit.map`. Das Build-Log zeigt die Belegung von Flash und RAM.
+
+Der UART-Test verwendet einen simulierten HAL und lässt sich mit einem C++-Compiler lokal ausführen.
+
+```sh
+cmake -S tests/uart -B build/uart-host -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/uart-host --config Debug
+ctest --test-dir build/uart-host -C Debug --output-on-failure
+```
+
 ## Git
 
 Das Repository hat noch keinen Commit. `origin` ist bereits eingerichtet; das Remote enthält noch keinen Branch. Für den ersten Push:
