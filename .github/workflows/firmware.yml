@@ -45,7 +45,7 @@ jobs:
           if-no-files-found: error
 
   uart-tests:
-    name: UART host tests
+    name: UART and rail host tests
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -59,3 +59,9 @@ jobs:
           cmake -S tests/uart -B build/uart-host -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/uart-host
           ctest --test-dir build/uart-host --output-on-failure
+
+      - name: Build and run rail signal tests
+        run: |
+          cmake -S tests/rail -B build/rail-host -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/rail-host
+          ctest --test-dir build/rail-host --output-on-failure
