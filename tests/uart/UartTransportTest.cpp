@@ -9,6 +9,11 @@ UART_HandleTypeDef *activeHandle = nullptr;
 uint8_t *activeBuffer = nullptr;
 uint16_t activeSize = 0;
 unsigned receiveStarts = 0;
+UART_HandleTypeDef *transmitHandle = nullptr;
+const uint8_t *transmitBuffer = nullptr;
+uint16_t transmitSize = 0;
+unsigned transmitStarts = 0;
+HAL_StatusTypeDef transmitStatus = HAL_OK;
 uint32_t interruptMask = 0;
 HAL_StatusTypeDef receiveStatus = HAL_OK;
 unsigned failures = 0;
@@ -44,6 +49,18 @@ HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *handle, uint8_t *data,
         activeSize = size;
     }
     return receiveStatus;
+}
+
+HAL_StatusTypeDef HAL_UART_Transmit_IT(UART_HandleTypeDef *handle, const uint8_t *data, uint16_t size)
+{
+    ++transmitStarts;
+    if (transmitStatus == HAL_OK)
+    {
+        transmitHandle = handle;
+        transmitBuffer = data;
+        transmitSize = size;
+    }
+    return transmitStatus;
 }
 
 uint32_t __get_PRIMASK()
@@ -90,6 +107,28 @@ int main()
     interruptMask = 1;
     expect(transport.tryRecieveWord(&word) && word == 0, "Zero must be returned as a valid word");
     expect(interruptMask == 1, "Reading a word must preserve an existing interrupt mask");
+
+    expect(transport.trySendWord(0x1234), "A word must start the UART transmission");
+    expect(transmitHandle == &uart && transmitStarts == 1, "Transmission must use the supplied UART");
+    expect(transmitSize == 2 && transmitBuffer != nullptr &&
+           transmitBuffer[0] == 0x12 && transmitBuffer[1] == 0x34,
+           "Transmission must send the high byte first");
+    expect(!transport.trySendWord(0x5678) && transmitStarts == 1,
+           "An active transmission must prevent reusing the send buffer");
+    expect(transmitBuffer != nullptr && transmitBuffer[0] == 0x12 && transmitBuffer[1] == 0x34,
+           "The active transmission must retain its original bytes");
+
+    transport.onTransmitComplete();
+    transmitStatus = HAL_BUSY;
+    expect(!transport.trySendWord(0x3000) && transmitStarts == 2,
+           "A HAL-busy result must report a failed start");
+    transmitStatus = HAL_OK;
+    expect(transport.trySendWord(0x3000) && transmitStarts == 3,
+           "A failed start must leave the buffer available for a retry");
+    expect(transmitSize == 2 && transmitBuffer != nullptr &&
+           transmitBuffer[0] == 0x30 && transmitBuffer[1] == 0,
+           "An ACK must send both bytes starting with 0x30");
+    transport.onTransmitComplete();
 
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -12,6 +12,7 @@ enum HAL_StatusTypeDef
 struct UART_HandleTypeDef {};
 
 HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *handle, uint8_t *data, uint16_t size);
+HAL_StatusTypeDef HAL_UART_Transmit_IT(UART_HandleTypeDef *handle, const uint8_t *data, uint16_t size);
 uint32_t __get_PRIMASK();
 void __disable_irq();
 void __set_PRIMASK(uint32_t mask);

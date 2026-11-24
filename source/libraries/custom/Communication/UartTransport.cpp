@@ -28,8 +28,19 @@ bool UartTransport::tryRecieveWord(uint16_t *data)
     return available;
 }
 
-bool UartTransport::trySendWord(uint16_t)
+bool UartTransport::trySendWord(uint16_t word)
 {
+    if (txBusy_)
+        return false;
+
+    txBuffer_[0] = static_cast<uint8_t>(word >> 8);
+    txBuffer_[1] = static_cast<uint8_t>(word);
+    txBusy_ = true;
+
+    if (HAL_UART_Transmit_IT(&uart_, txBuffer_, sizeof(txBuffer_)) == HAL_OK)
+        return true;
+
+    txBusy_ = false;
     return false;
 }
 
@@ -44,7 +55,7 @@ HAL_StatusTypeDef UartTransport::onRecieveComplete()
     return HAL_UART_Receive_IT(&uart_, rxBuffer_, sizeof(rxBuffer_));
 }
 
-HAL_StatusTypeDef UartTransport::onTransmitComplete()
+void UartTransport::onTransmitComplete()
 {
-    return HAL_ERROR;
+    txBusy_ = false;
 }

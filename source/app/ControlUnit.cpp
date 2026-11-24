@@ -19,6 +19,8 @@ namespace
 
     ControlUnit controlUnit{config};
     UartTransport uartTransport{huart2};
+    uint16_t pendingResponse = 0;
+    bool responsePending = false;
 }
 
 void ControlUnit_Init(void)
@@ -34,6 +36,19 @@ void ControlUnit_Init(void)
 void ControlUnit_Tick(void)
 {
     controlUnit.tick();
+
+    if (!responsePending)
+    {
+        uint16_t request;
+        if (!uartTransport.tryRecieveWord(&request))
+            return;
+
+        pendingResponse = controlUnit.handleCommand(request);
+        responsePending = true;
+    }
+
+    if (uartTransport.trySendWord(pendingResponse))
+        responsePending = false;
 }
 
 extern "C" void TIM2_IRQHandler(void)
@@ -58,6 +73,16 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
         if (uartTransport.onRecieveComplete() != HAL_OK)
             HAL_UART_AbortReceive(uart);
     }
+}
+
+/**
+ * @brief Gibt den Sendepuffer frei, wenn USART2 die Antwort gesendet hat.
+ * @param[in] uart HAL-Handle der UART, die den Interrupt ausgelöst hat.
+ */
+extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart)
+{
+    if (uart == &huart2)
+        uartTransport.onTransmitComplete();
 }
 
 /**
