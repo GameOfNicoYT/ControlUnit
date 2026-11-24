@@ -46,9 +46,91 @@ void ControlUnit::tick()
 {
     uint32_t current_mA;
     RailLevel level;
-    if (!currentSensor_.takeTrackSample(current_mA, level))
+    if (!currentSensor_.takeTrackSample(current_mA, level) || rail_.state() != RailPowerState::ON)
         return;
 
     if (detector_.check(current_mA, level == RailLevel::HIGH) == HAL_ERROR)
         rail_.onShortCircuit();
+}
+
+void ControlUnit::Req_ResetFault()
+{
+    rail_.disable();
+    rail_.resetFault();
+    detector_.reset();
+}
+
+uint16_t ControlUnit::handleCommand(uint16_t word)
+{
+    constexpr uint16_t ack = 0x3000;
+    constexpr uint16_t unknownCommand = 0x3001;
+    constexpr uint16_t invalidArgument = 0x3002;
+    constexpr uint16_t invalidState = 0x3003;
+
+    switch (word >> 12)
+    {
+    case 0x0: // INIT
+        return word == 0x0000 ? ack : invalidArgument;
+
+    case 0x1: // GET_STATUS
+    {
+        const bool railPowerRequested = word == 0x1000;
+        if (!railPowerRequested && word != 0x1100)
+            return invalidArgument;
+
+        switch (rail_.state())
+        {
+        case RailPowerState::OFF:
+            return railPowerRequested ? 0x4000 : 0x4100;
+        case RailPowerState::ON:
+            return railPowerRequested ? 0x4001 : 0x4100;
+        case RailPowerState::SHORT_CIRCUIT:
+            return railPowerRequested ? 0x4002 : 0x4101;
+        case RailPowerState::FAULT:
+            return railPowerRequested ? 0x4002 : 0x4102;
+        }
+        return invalidState;
+    }
+
+    case 0x2: // SET_STATUS
+        if (word == 0x2000)
+        {
+            rail_.disable();
+            detector_.reset();
+            return ack;
+        }
+        if (word == 0x2001)
+        {
+            rail_.enable();
+            return rail_.state() == RailPowerState::ON ? ack : invalidState;
+        }
+        return invalidArgument;
+
+    case 0xA: // SEND_CAR_COMMAND
+    {
+        const uint8_t carID = (word >> 8) & 0xF;
+        const uint8_t laneChange = word & 0xF;
+        if (carID > 6 || laneChange > 1)
+            return invalidArgument;
+
+        // The track signal generator still needs to consume car commands.
+        return invalidState;
+    }
+
+    case 0xF:
+        if (word == 0xF000) // RESET_ERROR
+        {
+            Req_ResetFault();
+            return ack;
+        }
+        if (word == 0xFFFF) // ENTER_ERROR_MODE
+        {
+            rail_.setFault();
+            return ack;
+        }
+        return unknownCommand;
+
+    default:
+        return unknownCommand;
+    }
 }

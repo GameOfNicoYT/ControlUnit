@@ -19,7 +19,7 @@ void RailPower::init()
  * @brief  Enables the Rail output.
  *
  * @note   Allows the signal level to be written to the Rail and sets the state to ON.
- *         If a short circuit is stored, the Rail remains locked.
+ *         A stored fault keeps the rail locked.
  *         This function does not set the output to HIGH by itself.
  *
  * @retval None
@@ -29,7 +29,7 @@ void RailPower::enable()
     const uint32_t previousMask = __get_PRIMASK();
     __disable_irq();
 
-    if (state_ != RailPowerState::SHORT_CIRCUIT)
+    if (state_ == RailPowerState::OFF)
     {
         lowLevel_.allowOutput();
         state_ = RailPowerState::ON;
@@ -42,7 +42,7 @@ void RailPower::enable()
  * @brief  Disables the Rail output.
  *
  * @note   Locks the output and sets the Rail to LOW.
- *         A stored short-circuit state remains active.
+ *         A stored fault remains active.
  *
  * @retval None
  */
@@ -53,7 +53,7 @@ void RailPower::disable()
 
     lowLevel_.lockOutput();
 
-    if (state_ != RailPowerState::SHORT_CIRCUIT)
+    if (state_ == RailPowerState::ON)
     {
         state_ = RailPowerState::OFF;
     }
@@ -62,9 +62,9 @@ void RailPower::disable()
 }
 
 /**
- * @brief  Resets the stored short-circuit state.
+ * @brief  Resets the stored rail fault.
  *
- * @note   Changes the state from SHORT_CIRCUIT to OFF.
+ * @note   Changes a stored fault state to OFF.
  *         The Rail remains locked and must be enabled separately.
  *         This function does not check whether the physical short circuit is gone.
  *
@@ -75,13 +75,19 @@ void RailPower::resetFault()
     const uint32_t previousMask = __get_PRIMASK();
     __disable_irq();
 
-    if (state_ == RailPowerState::SHORT_CIRCUIT)
+    if (state_ == RailPowerState::SHORT_CIRCUIT || state_ == RailPowerState::FAULT)
     {
         lowLevel_.lockOutput();
         state_ = RailPowerState::OFF;
     }
 
     __set_PRIMASK(previousMask);
+}
+
+/** @brief Locks the rail after a shutdown request from the PLC. */
+void RailPower::setFault()
+{
+    latchFault(RailPowerState::FAULT);
 }
 
 /**
@@ -101,7 +107,7 @@ void RailPower::applySignalLevel(RailLevel level)
 /**
  * @brief  Returns the current RailPower state.
  *
- * @retval RailPowerState current state: OFF, ON or SHORT_CIRCUIT.
+ * @return The current rail power or fault state.
  */
 RailPowerState RailPower::state() const
 {
@@ -118,6 +124,17 @@ RailPowerState RailPower::state() const
  */
 void RailPower::onShortCircuit()
 {
+    latchFault(RailPowerState::SHORT_CIRCUIT);
+}
+
+void RailPower::latchFault(RailPowerState fault)
+{
+    const uint32_t previousMask = __get_PRIMASK();
+    __disable_irq();
+
     lowLevel_.lockOutput();
-    state_ = RailPowerState::SHORT_CIRCUIT;
+    if (state_ == RailPowerState::OFF || state_ == RailPowerState::ON)
+        state_ = fault;
+
+    __set_PRIMASK(previousMask);
 }
