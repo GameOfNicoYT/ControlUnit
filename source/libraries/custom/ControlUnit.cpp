@@ -44,6 +44,12 @@ void ControlUnit::onTrackSampleTrigger()
 
 void ControlUnit::tick()
 {
+    if (heartbeatReceived_ && HAL_GetTick() - lastHeartbeat_ms_ >= heartbeatTimeout_ms_)
+    {
+        heartbeatReceived_ = false;
+        rail_.onCommunicationTimeout();
+    }
+
     uint32_t current_mA;
     RailLevel level;
     if (!currentSensor_.takeTrackSample(current_mA, level) || rail_.state() != RailPowerState::ON)
@@ -69,7 +75,13 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
 
     switch (word >> 12)
     {
-    case 0x0: // INIT
+    case 0x0: // Communication
+        if (word == 0x0100) // RUN_KEEPALIVE
+        {
+            lastHeartbeat_ms_ = HAL_GetTick();
+            heartbeatReceived_ = true;
+            return ack;
+        }
         return word == 0x0000 ? ack : invalidArgument;
 
     case 0x1: // GET_STATUS
@@ -88,6 +100,8 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
             return railPowerRequested ? 0x4002 : 0x4101;
         case RailPowerState::FAULT:
             return railPowerRequested ? 0x4002 : 0x4102;
+        case RailPowerState::COMMUNICATION_TIMEOUT:
+            return railPowerRequested ? 0x4002 : 0x4103;
         }
         return invalidState;
     }
@@ -101,6 +115,9 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
         }
         if (word == 0x2001)
         {
+            if (!heartbeatReceived_)
+                return invalidState;
+
             rail_.enable();
             return rail_.state() == RailPowerState::ON ? ack : invalidState;
         }

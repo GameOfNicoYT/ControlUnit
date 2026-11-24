@@ -13,7 +13,7 @@ Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
 - [ ] Ungültige, ausbleibende oder veraltete Messungen behandeln; nicht als gültige Werte unter dem Grenzwert ausgeben.
 - [x] Stromsensor, Detektor und `RailPower::onShortCircuit()` über `ControlUnit::tick()` verbinden.
 - [ ] Vor der Interrupt-Anbindung der Signalausgabe den gleichzeitigen Zugriff auf `RailPower` prüfen.
-- [ ] Rücksetzung koordinieren: Detector-Zähler löschen, Fault quittieren, Ausgang zunächst OFF lassen, anschließend bewusst freigeben. resetFault() prüft den physischen Kurzschluss derzeit nicht.
+- [x] Fehler quittieren, Detektorzähler zurücksetzen und Bahnausgang bis zur separaten Freigabe sperren.
 
 ## Danach
 
@@ -27,5 +27,8 @@ Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
 ## USART2 und MOXA-Protokoll
 
 - [x] USART2-Empfang per Interrupt starten und vollständige Wörter für die Hauptschleife bereitstellen.
-- [ ] Wörter in `ControlUnit_Tick()` auswerten und Antworten senden.
+- [x] Wörter in `ControlUnit_Tick()` abholen, `INIT` verarbeiten und Antworten über USART2 senden.
+- [x] Bahnstatus, Fehlerstatus, Bahnfreigabe, Fehlerquittierung und Betriebs-Heartbeat in `ControlUnit::handleCommand()` verarbeiten.
+- [ ] Fahrbefehle an die Carrera-Signalerzeugung übergeben.
+- [ ] Heartbeat, lokale Abschaltung und Wiederanlauf auf der SPS implementieren.
 - [ ] Empfang und Neustart der Kommunikation am Board mit dem Moxa prüfen.

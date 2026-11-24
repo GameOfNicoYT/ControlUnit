@@ -7,6 +7,7 @@ enum class RailPowerState
     OFF = 0x00,
     ON = 0x01,
     FAULT = 0xf0,
+    COMMUNICATION_TIMEOUT = 0xf1,
     SHORT_CIRCUIT = 0xff
 };
 
@@ -19,6 +20,7 @@ public:
     void onShortCircuit();
     void resetFault();
     void setFault();
+    void onCommunicationTimeout();
     void applySignalLevel(RailLevel level);
     RailPowerState state() const;
 

@@ -75,7 +75,7 @@ void RailPower::resetFault()
     const uint32_t previousMask = __get_PRIMASK();
     __disable_irq();
 
-    if (state_ == RailPowerState::SHORT_CIRCUIT || state_ == RailPowerState::FAULT)
+    if (state_ != RailPowerState::OFF && state_ != RailPowerState::ON)
     {
         lowLevel_.lockOutput();
         state_ = RailPowerState::OFF;
@@ -88,6 +88,12 @@ void RailPower::resetFault()
 void RailPower::setFault()
 {
     latchFault(RailPowerState::FAULT);
+}
+
+/** @brief Locks the rail when the operating heartbeat expires. */
+void RailPower::onCommunicationTimeout()
+{
+    latchFault(RailPowerState::COMMUNICATION_TIMEOUT);
 }
 
 /**

@@ -41,7 +41,7 @@ public:
     HAL_StatusTypeDef init();
 
     /**
-     * @brief Wertet eine verfügbare Bahnstrommessung in der Hauptschleife aus.
+     * @brief Prüft den Betriebs-Heartbeat und wertet verfügbare Bahnstrommessungen aus.
      * @details Bei erkanntem Kurzschluss sperrt RailPower den Bahnausgang.
      * @pre init() wurde erfolgreich abgeschlossen.
      */
@@ -67,7 +67,11 @@ public:
     uint16_t handleCommand(uint16_t word);
 
 private:
+    static constexpr uint32_t heartbeatTimeout_ms_ = 1000;
+
     RailPower rail_;
     CurrentSensor currentSensor_;
     RailShortCircuitDetector detector_;
+    uint32_t lastHeartbeat_ms_ = 0;
+    bool heartbeatReceived_ = false;
 };
