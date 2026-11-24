@@ -27,23 +27,23 @@ The PLC sends one request at a time and waits for the response before sending th
 | ID    | Status       | Access       | Values                                                                                                       |
 | ----- | ------------ | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | `0x0` | Rail power   | Read / write | Read `0x00` = OFF, `0x01` = ON, `0x02` = error mode. Write `0x00` to switch OFF or `0x01` to request enable. |
-| `0x1` | Stored fault | Read only    | `0x00` = no fault, `0x01` = rail short circuit, `0x02` = shutdown requested by the PLC, `0x03` = operating heartbeat expired.                      |
+| `0x1` | Stored fault | Read only    | `0x00` = no fault, `0x01` = rail short circuit, `0x02` = shutdown requested by the PLC or rail signal timing fault, `0x03` = operating heartbeat expired.                      |
 
 An enable request is rejected while a fault is stored. To restart after a fault, the PLC sends `RESET_ERROR`, waits for `ACK`, then sends `SET_STATUS` with rail power set to `0x01`.
 
 ## Car command fields
 
-The current firmware validates car IDs 0 through 6 and the lane-change field. It returns `INVALID_STATE` for valid car commands until the track signal generator is connected.
+Car commands are accepted while rail power is ON. The STM32 keeps the last accepted speed for each car in RAM and includes it in every CAR packet for that address. A new car command changes only the addressed car. The PLC sends a car command when the setting changes and keeps sending the operating heartbeat. Enabling the rail starts all cars at speed zero with their lane-change requests cleared.
 
 | Field | Description                                                                      |
 | ----- | -------------------------------------------------------------------------------- |
-| `C`   | Car ID. The ControlUnit rejects IDs that are not configured.                     |
+| `C`   | OpenSlot address `0x0` through `0x5` for Carrera cars 1 through 6. Other addresses are invalid.                     |
 | `S`   | Speed step from `0x0` to `0xF`. `0x0` means stop.                                |
 | `L`   | `0x0` = no lane change, `0x1` = request a lane change. Other values are invalid. |
 
-A lane change is requested when `L` changes from `0` to `1` for that car. The initial value is `0`. Repeated commands with `L = 1` do not request another lane change. Send `L = 0` before requesting the next one.
+A lane change is requested when `L` changes from `0` to `1` for that car. The initial value is `0`. Repeated commands with `L = 1` do not request another lane change. Send `L = 0` before requesting the next one. Each request presses the lane-change bit in one CAR packet and releases it in the next. Each car can hold one pending request. A new rising edge while that request is pending returns `INVALID_STATE` and can be retried.
 
-Example `0xA351` sets car `3` to speed step `5` and requests a lane change if its previous `L` was `0`.
+Example `0xA351` sets Carrera car 4 (address `3`) to speed step `5` and requests a lane change if its previous `L` was `0`.
 
 ## Responses
 
@@ -56,6 +56,21 @@ Example `0xA351` sets car `3` to speed step `5` and requests a lane change if it
 | `0x4IVV` | `STATUS_VALUE`     | Response to `GET_STATUS` with status ID `I` and value `VV`.          |
 
 Example `GET_STATUS` with word `0x1000` returns `0x4002` when the rail is in error mode.
+
+## UART example
+
+Use USART2 at 115200 baud, 8 data bits, no parity, 1 stop bit, and no flow control. Send two binary bytes per request and wait for the two-byte reply.
+
+| Send (hex) | Reply (hex) | Action |
+| --- | --- | --- |
+| `00 00` | `30 00` | Check communication with INIT. |
+| `01 00` | `30 00` | Start or refresh the operating heartbeat. |
+| `20 01` | `30 00` | Enable the rail. |
+| `A3 50` | `30 00` | Set Carrera car 4 to speed step 5. |
+| `A3 00` | `30 00` | Set Carrera car 4 to speed step 0. |
+| `20 00` | `30 00` | Switch off the rail. |
+
+Send `01 00` every 250 ms during operation. `30 00` acknowledges receipt by the STM32.
 
 ## Timeout and synchronization
 

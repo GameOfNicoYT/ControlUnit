@@ -3,6 +3,7 @@ add_library(controlunit_custom STATIC
     Rails/RailPower.cpp
     Rails/RailShortCircuitDetector.cpp
     Rails/CurrentSensors.cpp
+    Rails/SignalGenerator.cpp
     ControlUnit.cpp
     Communication/UartTransport.cpp
 )

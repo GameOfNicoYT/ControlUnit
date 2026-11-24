@@ -7,6 +7,7 @@
 #include "Rails/CurrentSensors.h"
 #include "Rails/RailPower.h"
 #include "Rails/RailShortCircuitDetector.h"
+#include "Rails/SignalGenerator.h"
 
 /** @brief Messparameter und Grenzwerte für die Bahnüberwachung. */
 struct ControlUnitConfig
@@ -47,11 +48,8 @@ public:
      */
     void tick();
 
-    /**
-     * @brief Erfasst den logischen Pegel des Bahnausgangs zum ADC-Messzeitpunkt.
-     * @note Wird aus dem TIM2-Interrupt aufgerufen und ordnet den Pegel der Messung zu.
-     */
-    void onTrackSampleTrigger();
+    /// @brief Verarbeitet Signal- und Strommess-Compare von TIM2.
+    void onRailTimerInterrupt();
 
     /**
      * @brief Quittiert den Bahnfehler und hält den Bahnausgang ausgeschaltet.
@@ -69,7 +67,13 @@ public:
 private:
     static constexpr uint32_t heartbeatTimeout_ms_ = 1000;
 
+    void onTrackSampleTrigger();
+    bool startRailSignal();
+    void stopRailSignal();
+
     RailPower rail_;
+    SignalGenerator signalGenerator_;
+    SignalGenerator::TimedLevel nextSignalStep_{};
     CurrentSensor currentSensor_;
     RailShortCircuitDetector detector_;
     uint32_t lastHeartbeat_ms_ = 0;

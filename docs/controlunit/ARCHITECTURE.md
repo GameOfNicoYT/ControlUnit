@@ -25,6 +25,7 @@ Die Stromumrechnung braucht die tatsächlichen Shunt-Widerstände, die Verstärk
 | RailPowerLowLevel | PA8 schreiben, Ausgang freigeben und bei Sperre LOW erzwingen. | Implementiert. |
 | RailPower | OFF, ON, SHORT_CIRCUIT, FAULT und COMMUNICATION_TIMEOUT. Verwendet RailPowerLowLevel. Freigabe, Sperre, Fehlerquittierung. | Implementiert. |
 | CurrentSensor in CurrentSensors.h/.cpp | ADC-Rohwerte in mA umrechnen; Bahnprobe und Pegel zum Messzeitpunkt zusammenhalten. Keine Fehlerentscheidung. | ADC- und DMA-Verarbeitung implementiert. |
+| SignalGenerator | PRG-, PG-, ACT- und CAR-Telegramme bilden und Manchester-Pegel mit Dauer liefern. | Ausgabestufe für sechs Fahrzeuge implementiert. |
 | RailShortCircuitDetector | Mehrere gültige HIGH-Stromproben auf Grenzwert prüfen. Keine GPIO-Ansteuerung. | Implementiert. `check()` meldet einen erkannten Kurzschluss als `HAL_ERROR`. |
 | source/app/ControlUnit.cpp | Klassen verbinden, Init/Ereignisse und Wireless-Nachrichten koordinieren. | Ruft die Initialisierung und Auswertung auf und leitet den TIM2-Interrupt weiter. |
 
@@ -48,7 +49,7 @@ Das generierte main.c initialisiert GPIO, ADC, USART2 und TIM2, ruft danach Cont
 
 Der Moxa verbindet Ethernet mit RS232. Der STM32 sendet und empfängt Bytes über USART2 (115200 Baud, 8N1). Das Datenformat steht in [MOXA.md](MOXA.md).
 
-1. CubeMX initialisiert `huart2`, aktiviert den USART2-Interrupt und erzeugt `USART2_IRQHandler()`. `ControlUnit_Init()` setzt die USART2-Priorität auf 1, damit TIM2 und ADC-DMA mit Priorität 0 Vorrang haben. Nach erfolgreichem Start der Bahnüberwachung und des UART-Empfangs beginnt die Hauptschleife. Die Bahn startet in `OFF`.
+1. CubeMX initialisiert `huart2`, aktiviert den USART2-Interrupt und erzeugt `USART2_IRQHandler()`. `ControlUnit_Init()` setzt die USART2-Priorität auf 2, damit TIM2 und ADC-DMA Vorrang haben. Nach erfolgreichem Start der Bahnüberwachung und des UART-Empfangs beginnt die Hauptschleife. Die Bahn startet in `OFF`.
 2. Nach dem zweiten Byte meldet `HAL_UART_RxCpltCallback()` den Empfang an `UartTransport`. Der Transport speichert das Wort und startet den nächsten Empfang. Das höherwertige Byte kommt zuerst.
 3. `ControlUnit_Tick()` in `source/app/ControlUnit.cpp` prüft erst die Bahn und holt dann höchstens einen UART-Befehl ab. `ControlUnit::handleCommand()` in `source/libraries/custom/ControlUnit.cpp` verarbeitet ihn und liefert das Antwortwort. Hier kommen weitere Befehle dazu.
 4. `UartTransport::trySendWord()` startet die Antwort ohne Wartezeit. Ist der UART noch belegt, bleibt die Antwort für den nächsten Durchlauf vorgemerkt. `HAL_UART_TxCpltCallback()` gibt den Sendepuffer wieder frei. Die HAL-Callbacks stehen in `source/app/ControlUnit.cpp`.
@@ -57,14 +58,18 @@ Der Transport hält ein vollständiges Wort zur Abholung bereit. Trifft vorher e
 
 Nach einem UART-Empfangsfehler oder einem fehlgeschlagenen Empfangsneustart wird der Empfang abgebrochen. Weil das 2-Byte-Format keine Startmarkierung hat, müssen beide Seiten bei einem Fehler neu synchronisiert werden. Die Firmware bietet dafür derzeit einen Neustart der ControlUnit.
 
-## Timing und Schutz
+## Carrera-Signal, Timing und Schutz
 
-Der ADC erfasst mit 12 Bit und 39,5 ADC-Takten Abtastzeit zuerst PA0 und danach PA1. TIM2 CH4 startet die Sequenz per Hardware. Der Compare-Interrupt liest PA8 ein, der DMA-Callback speichert den Pegel mit der Bahnprobe und `ControlUnit::tick()` wertet diese aus. Der TIM2-Interrupt wird über die App eingebunden. Für eine gültige Zuordnung muss PA8 über das Ablesen und die PA1-Abtastung hinweg stabil sein. Bei der Signalerzeugung außerdem Abstand zur Schaltflanke und die Interrupt-Latenz am Board prüfen.
+Der [OpenSlot-Zyklus](https://openslot.de/docs/datenprotokoll) besteht aus zehn Telegrammen im Abstand von 7,5 ms. Die Klasse SignalGenerator erzeugt den PRG-Wert für Normalbetrieb aus dem OpenSlot-Beispiel und die PG-Meldung mit gesperrtem Ghost- und Pacecar. ACT meldet die Fahrzeuge mit Fahrstufe über null. Die sechs CAR-Telegramme enthalten Fahrstufe und das aktive LOW-Spurwechselbit. Tankfunktion und Fernprogrammierung sind nicht vorgesehen.
 
-RailPowerLowLevel::writeSignalLevel() schützt Flag-Prüfung und GPIO-Schreibvorgang mit gespeichertem PRIMASK. RailPower::enable(), disable() und resetFault() verwenden ebenfalls kurze kritische Abschnitte. onShortCircuit() verriegelt im selben kritischen Abschnitt wie die übrigen Fehlerpfade.
+HSI16 taktet TIM2 nach dem Vorteiler mit 1 MHz. Compare 1 gibt die Pegel über RailPower aus. Ein Manchester-Halbbit dauert 50 µs. Der Interrupt schaltet zuerst den vorbereiteten Pegel und berechnet dann den folgenden Pegel. Der nächste Compare wird relativ zum vorherigen geplant, auch beim Zählerüberlauf. Ist der Pegelwechsel erheblich verspätet, verriegelt die ControlUnit den Ausgang und speichert FAULT.
+
+Compare 4 startet alle 400 µs eine ADC-Sequenz 20 µs nach Beginn eines möglichen Manchester-Halbbits. Der ADC läuft mit 8 MHz und erfasst zuerst PA0 und danach PA1 mit je 79,5 ADC-Takten Abtastzeit. Der Compare-Interrupt erfasst PA8 und der DMA-Callback mit niedrigerer Priorität speichert diesen Pegel mit der Bahnprobe. Einschwingzeit der Endstufe und des Strommesspfads sowie Interrupt-Latenz am Board messen.
+
+RailPower hält PA8 bei OFF oder Fehler auf LOW. Beim Wiedereinschalten setzt SignalGenerator alle Fahrstufen und Spurwechselanforderungen zurück und startet bei PRG. Die Firmware sperrt kurze konkurrierende Zugriffe auf den SignalGenerator und auf die Zuordnung zwischen TIM2 und ADC-DMA.
 
 ## Tatsächlicher Stand
 
-Die Strommessung und die Abschaltlogik sind im Code verbunden. Die App enthält Startwerte für die Strommessung und die Kurzschlussgrenze. Abtastung, Stromskalierung und Abschaltzeit müssen am Board geprüft werden.
+Signalerzeugung, SPS-Fahrbefehle, Strommessung und Abschaltlogik sind verbunden. Signalform, Abtastung, Stromskalierung und Abschaltzeit müssen am Board geprüft werden.
 
 Die nächsten Schritte stehen in [TODO.md](TODO.md).

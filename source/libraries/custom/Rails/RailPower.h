@@ -28,5 +28,5 @@ private:
     void latchFault(RailPowerState fault);
 
     RailPowerLowLevel lowLevel_;
-    RailPowerState state_ = RailPowerState::OFF;
+    volatile RailPowerState state_ = RailPowerState::OFF;
 };

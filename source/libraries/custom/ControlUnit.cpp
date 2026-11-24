@@ -2,6 +2,20 @@
 #include "tim.h"
 #include "ControlUnitController.h"
 
+namespace
+{
+constexpr uint16_t sampleInterval_us = 400;
+constexpr uint16_t sampleOffset_us = 20;
+constexpr uint16_t maxCompareLatency_us = 15;
+static_assert(sampleInterval_us % SignalGenerator::halfBit_us == 0);
+static_assert(maxCompareLatency_us < sampleOffset_us);
+
+uint16_t elapsedSince(uint16_t compare)
+{
+    return static_cast<uint16_t>(TIM2->CNT - compare);
+}
+}
+
 ControlUnit::ControlUnit(const ControlUnitConfig &config)
     : currentSensor_(config.trackShunt_mOhm,
                      config.supplyShunt_mOhm,
@@ -17,9 +31,17 @@ HAL_StatusTypeDef ControlUnit::init()
 {
     rail_.init();
 
+    // TIM2 zählt mit 1 MHz und springt nach 65535 auf 0.
+    if (HAL_RCC_GetPCLK1Freq() != 16000000U ||
+        (RCC->CFGR & RCC_CFGR_PPRE1) != 0U ||
+        htim2.Init.Prescaler != 15 || htim2.Init.Period != UINT16_MAX)
+        return HAL_ERROR;
+
+    HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 1, 0);
     if (currentSensor_.init() != HAL_OK)
         return HAL_ERROR;
 
+    TIM2->CCR4 = sampleOffset_us;
     __HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_CC4);
     HAL_NVIC_ClearPendingIRQ(TIM2_IRQn);
     HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
@@ -33,8 +55,50 @@ HAL_StatusTypeDef ControlUnit::init()
     return HAL_OK;
 }
 
+void ControlUnit::onRailTimerInterrupt()
+{
+    const uint32_t pending = TIM2->SR & TIM2->DIER;
+    if ((pending & TIM_FLAG_CC1) != 0U)
+    {
+        __HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_CC1);
+        const auto compare = static_cast<uint16_t>(TIM2->CCR1);
+        if (elapsedSince(compare) <= maxCompareLatency_us)
+        {
+            rail_.applySignalLevel(nextSignalStep_.level);
+            TIM2->CCR1 = static_cast<uint16_t>(compare + nextSignalStep_.duration_us);
+            // Bereite den nächsten Pegel erst nach der zeitkritischen Ausgabe vor.
+            nextSignalStep_ = signalGenerator_.nextTimedLevel();
+        }
+        else
+        {
+            stopRailSignal();
+            rail_.setFault();
+        }
+    }
+
+    if ((pending & TIM_FLAG_CC4) != 0U)
+    {
+        __HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_CC4);
+        onTrackSampleTrigger();
+    }
+}
+
 void ControlUnit::onTrackSampleTrigger()
 {
+    const auto compare = static_cast<uint16_t>(TIM2->CCR4);
+    const uint16_t elapsed = elapsedSince(compare);
+    // Bei verspätetem IRQ den nächsten Compare auf demselben Abtastraster setzen.
+    uint32_t nextCompare = compare + sampleInterval_us;
+    if (elapsed >= sampleInterval_us - maxCompareLatency_us)
+        nextCompare += ((elapsed + maxCompareLatency_us) / sampleInterval_us) * sampleInterval_us;
+    TIM2->CCR4 = static_cast<uint16_t>(nextCompare);
+
+    if (elapsed > maxCompareLatency_us)
+    {
+        currentSensor_.onAdcError();
+        return;
+    }
+
     const RailLevel level =
         HAL_GPIO_ReadPin(CARERRA_DATA_GPIO_Port, CARERRA_DATA_Pin) == GPIO_PIN_SET
             ? RailLevel::HIGH
@@ -42,11 +106,41 @@ void ControlUnit::onTrackSampleTrigger()
     currentSensor_.onSampleTrigger(level);
 }
 
+bool ControlUnit::startRailSignal()
+{
+    const uint32_t previousMask = __get_PRIMASK();
+    __disable_irq();
+
+    if (rail_.state() == RailPowerState::OFF)
+    {
+        detector_.reset();
+        signalGenerator_.reset();
+        nextSignalStep_ = signalGenerator_.nextTimedLevel();
+        rail_.enable();
+
+        // Alle Signalpegel beginnen auf demselben Halbbitraster. CH4 misst
+        // sampleOffset_us nach diesem Rasterpunkt.
+        TIM2->CCR1 = static_cast<uint16_t>(TIM2->CCR4 - sampleOffset_us + sampleInterval_us);
+        __HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_CC1);
+        __HAL_TIM_ENABLE_IT(&htim2, TIM_IT_CC1);
+    }
+
+    const bool enabled = rail_.state() == RailPowerState::ON;
+    __set_PRIMASK(previousMask);
+    return enabled;
+}
+
+void ControlUnit::stopRailSignal()
+{
+    __HAL_TIM_DISABLE_IT(&htim2, TIM_IT_CC1);
+}
+
 void ControlUnit::tick()
 {
     if (heartbeatReceived_ && HAL_GetTick() - lastHeartbeat_ms_ >= heartbeatTimeout_ms_)
     {
         heartbeatReceived_ = false;
+        stopRailSignal();
         rail_.onCommunicationTimeout();
     }
 
@@ -56,11 +150,15 @@ void ControlUnit::tick()
         return;
 
     if (detector_.check(current_mA, level == RailLevel::HIGH) == HAL_ERROR)
+    {
+        stopRailSignal();
         rail_.onShortCircuit();
+    }
 }
 
 void ControlUnit::Req_ResetFault()
 {
+    stopRailSignal();
     rail_.disable();
     rail_.resetFault();
     detector_.reset();
@@ -109,6 +207,7 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
     case 0x2: // SET_STATUS
         if (word == 0x2000)
         {
+            stopRailSignal();
             rail_.disable();
             detector_.reset();
             return ack;
@@ -118,20 +217,25 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
             if (!heartbeatReceived_)
                 return invalidState;
 
-            rail_.enable();
-            return rail_.state() == RailPowerState::ON ? ack : invalidState;
+            return startRailSignal() ? ack : invalidState;
         }
         return invalidArgument;
 
     case 0xA: // SEND_CAR_COMMAND
     {
-        const uint8_t carID = (word >> 8) & 0xF;
+        const uint8_t address = (word >> 8) & 0xF;
+        const uint8_t speed = (word >> 4) & 0xF;
         const uint8_t laneChange = word & 0xF;
-        if (carID > 6 || laneChange > 1)
+        if (address >= SignalGenerator::carCount || laneChange > 1)
             return invalidArgument;
 
-        // The track signal generator still needs to consume car commands.
-        return invalidState;
+        // Der Timer liest die Fahrdaten beim Vorbereiten des jeweiligen Telegramms.
+        const uint32_t previousMask = __get_PRIMASK();
+        __disable_irq();
+        const bool accepted = rail_.state() == RailPowerState::ON &&
+                              signalGenerator_.setCarCommand(address, speed, laneChange != 0);
+        __set_PRIMASK(previousMask);
+        return accepted ? ack : invalidState;
     }
 
     case 0xF:
@@ -142,6 +246,7 @@ uint16_t ControlUnit::handleCommand(uint16_t word)
         }
         if (word == 0xFFFF) // ENTER_ERROR_MODE
         {
+            stopRailSignal();
             rail_.setFault();
             return ack;
         }

@@ -142,9 +142,12 @@ bool CurrentSensor::takeTrackSample(uint32_t &current_mA, RailLevel &level)
 
 void CurrentSensor::onDmaComplete()
 {
+    const uint32_t previousMask = __get_PRIMASK();
+    __disable_irq();
     const bool hasLevel = pendingTrackLevelValid_;
     const RailLevel level = pendingTrackLevel_;
     pendingTrackLevelValid_ = false;
+    __set_PRIMASK(previousMask);
 
     // DMA-Reihenfolge: ADC_IN0 / PA0 ist Versorgung.
     updateSupply(adcBuffer_[0]);

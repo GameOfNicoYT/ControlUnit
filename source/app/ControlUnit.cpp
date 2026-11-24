@@ -2,7 +2,6 @@
 #include "ControlUnitController.h"
 #include "Communication/UartTransport.h"
 #include "main.h"
-#include "tim.h"
 #include "usart.h"
 
 namespace
@@ -28,7 +27,7 @@ void ControlUnit_Init(void)
     if (controlUnit.init() != HAL_OK)
         Error_Handler();
 
-    HAL_NVIC_SetPriority(USART2_IRQn, 1, 0);
+    HAL_NVIC_SetPriority(USART2_IRQn, 2, 0);
     if (uartTransport.init() != HAL_OK)
         Error_Handler();
 }
@@ -53,13 +52,7 @@ void ControlUnit_Tick(void)
 
 extern "C" void TIM2_IRQHandler(void)
 {
-    HAL_TIM_IRQHandler(&htim2);
-}
-
-extern "C" void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timer)
-{
-    if (timer == &htim2 && timer->Channel == HAL_TIM_ACTIVE_CHANNEL_4)
-        controlUnit.onTrackSampleTrigger();
+    controlUnit.onRailTimerInterrupt();
 }
 
 /**

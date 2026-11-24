@@ -1,6 +1,6 @@
 # ControlUnit – TODO
 
-Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
+Stand: 24. November 2026. Hardwaremessungen stehen noch aus.
 
 ## Nächster Schritt: Kurzschlussüberwachung
 
@@ -9,26 +9,27 @@ Stand: 23. November 2026. Hardwaremessungen stehen noch aus.
 - [ ] Shunt-Widerstände, INA180-Verstärkung, ADC-Referenz, Bahnstromgrenze und erlaubte Abschaltzeit am realen Schaltplan und den Anforderungen festlegen.
 - [x] ADC-Messpfad für PA0 und PA1 mit TIM2 CH4 und DMA einbinden.
 - [x] PA8 im TIM2-CH4-Interrupt lesen und den Pegel mit der Bahnprobe an die Auswertung übergeben.
-- [ ] Bei der Carrera-Signalerzeugung sicherstellen und messen, dass PA8 vom Trigger bis zur PA1-Abtastung stabil ist und genügend Abstand zur Schaltflanke besteht.
+- [x] TIM2-CH4-Trigger zeitversetzt zum Carrera-Signal planen.
+- [ ] Am Board messen, ob PA8 vom Trigger bis zur PA1-Abtastung stabil ist und die Endstufe und der Messpfad genügend Zeit zum Einschwingen haben.
 - [ ] Ungültige, ausbleibende oder veraltete Messungen behandeln; nicht als gültige Werte unter dem Grenzwert ausgeben.
 - [x] Stromsensor, Detektor und `RailPower::onShortCircuit()` über `ControlUnit::tick()` verbinden.
-- [ ] Vor der Interrupt-Anbindung der Signalausgabe den gleichzeitigen Zugriff auf `RailPower` prüfen.
+- [x] Signal-Timer mit der Bahnsperre verbinden und die Zugriffe zwischen Hauptschleife und ISR absichern.
 - [x] Fehler quittieren, Detektorzähler zurücksetzen und Bahnausgang bis zur separaten Freigabe sperren.
 
 ## Danach
 
-- [ ] Zeitkritische Carrera-Signalerzeugung ohne blockierende ADC-Abfrage im Flankenpfad implementieren.
+- [x] Zeitkritische Carrera-Signalerzeugung ohne blockierende ADC-Abfrage im Flankenpfad implementieren.
 - [ ] Versorgungsshunt PA0 unabhängig vom Bahn-Kurzschluss überwachen.
 - [ ] Wireless-Receiver auf PA6 WIRELESS_CLK (Ausgang) / PA7 WIRELESS_DATA (Eingang) einbinden und Protokoll auswerten.
 - [x] Initialisierung und Auswertung in der App aufrufen.
 - [x] Debug-Firmware mit der Bahnproben-Auswertung und dem TIM2-Interrupt bauen.
-- [ ] Nach Verfügbarkeit der Hardware Stromskalierung, Timing, Grenzwerte und reale Abschaltzeit überprüfen.
+- [ ] PA8 und Bahnausgang mit dem Oszilloskop prüfen. Danach Fahrstufen, Spurwechsel, Stromskalierung und reale Abschaltzeit testen.
 
 ## USART2 und MOXA-Protokoll
 
 - [x] USART2-Empfang per Interrupt starten und vollständige Wörter für die Hauptschleife bereitstellen.
 - [x] Wörter in `ControlUnit_Tick()` abholen, `INIT` verarbeiten und Antworten über USART2 senden.
 - [x] Bahnstatus, Fehlerstatus, Bahnfreigabe, Fehlerquittierung und Betriebs-Heartbeat in `ControlUnit::handleCommand()` verarbeiten.
-- [ ] Fahrbefehle an die Carrera-Signalerzeugung übergeben.
+- [x] Fahrbefehle an die Carrera-Signalerzeugung übergeben.
 - [ ] Heartbeat, lokale Abschaltung und Wiederanlauf auf der SPS implementieren.
 - [ ] Empfang und Neustart der Kommunikation am Board mit dem Moxa prüfen.
